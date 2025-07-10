@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>PyThor — REPL AI Assistant</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+
+        textarea,
+        input[type=text] {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        button {
+            padding: 10px 20px;
+        }
+
+        pre {
+            background-color: #f4f4f4;
+            padding: 15px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🤖 PyThor — REPL AI Assistant</h1>
+    <form method="post">
+        <label for="instruction">Enter your instruction:</label>
+        <input type="text" id="instruction" name="instruction" value="{{ user_input }}" required>
+
+        <label for="code">Add accompanying code snippet (optional):</label>
+        <textarea id="code" name="code" rows="10" placeholder="Paste code here...">{{ user_code }}</textarea>
+
+        <label><input type="checkbox" name="save_to_dataset" checked> Save code to dataset</label><br><br>
+
+        <button type="submit">Generate</button>
+    </form>
+
+    {% if code_status %}
+    <div style="white-space: pre-line; margin-top: 1em;">
+        <strong>Status:</strong><br>
+        {{ code_status }}
+    </div>
+    {% endif %}
+
+    {% if response %}
+    <h3>Generated Response:</h3>
+    <pre>{{ response }}</pre>
+    {% endif %}
+</body>
+
+</html>

@@ -24,13 +24,19 @@ Models:
 import sys
 import os
 import traceback
+
+import json
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from ai_core import generate_response, run_python_code, load_json_dataset
 
 # --- Configuration ---
 
 MODEL_NAME = "gpt2"  # Default model
 CACHE_DIR = os.path.expanduser("~/.cache/huggingface/transformers")
 USE_OFFLINE = "--offline" in sys.argv  # Use --offline flag to avoid internet
+
+DATASET_PATH = "python_articles.jsonl"
 
 print(f"🔧 Loading model (offline={USE_OFFLINE})...")
 
@@ -48,37 +54,6 @@ model = AutoModelForCausalLM.from_pretrained(
 
 # --- Functions ---
 
-def generate_response(prompt: str, max_tokens=150):
-    """
-    Generate a response using the loaded model.
-    """
-    input_ids = tokenizer.encode(prompt, return_tensors="pt")
-    output = model.generate(
-        input_ids,
-        max_length=len(input_ids[0]) + max_tokens,
-        do_sample=True,
-        pad_token_id=tokenizer.eos_token_id
-    )
-    return tokenizer.decode(output[0], skip_special_tokens=True)
-
-
-def run_python_code(code: str):
-    """
-    Executes Python code in a sandboxed context using exec().
-    Returns either the result or the error message.
-    """
-    try:
-        print("\n🔧 Executing Python code...")
-        exec_locals = {}
-        exec(code, {}, exec_locals)
-        return exec_locals
-    except Exception:
-        error = traceback.format_exc()
-        print("\n❌ Python Error:")
-        print(error)
-        return error
-
-
 def detect_language(user_input: str) -> str:
     """
     Naively detects which programming language is being requested.
@@ -93,15 +68,13 @@ def detect_language(user_input: str) -> str:
     else:
         return "unknown"
 
-
 def simulate_execution(code: str, lang: str):
     """
     Displays code instead of executing it (for non-Python languages).
     """
     print(f"\n📝 (Simulated Execution) [{lang}]:")
     print(code)
-
-
+ 
 # --- Main Loop ---
 
 if __name__ == "__main__":
@@ -114,7 +87,8 @@ if __name__ == "__main__":
             break
 
         language = detect_language(user_input)
-        prompt = f"# Task: {user_input}\n"
+        context = load_json_dataset(DATASET_PATH)
+        prompt = f"{context}\n\n# Task: {user_input}\n"
 
         print(f"\n--- Attempting response using model: {MODEL_NAME} ---")
         code = generate_response(prompt)
