@@ -128,9 +128,9 @@ cd C:\repo\nextjs-ai-assistant
 .\setup_all.ps1             # ✅ Step 1: Install system tools (requires admin)
 .\bootstrap.ps1             # ✅ Step 2: Set up virtual environment and Python deps
 python setup_install.py     # ✅ Step 3: Install Python dependencies, Hugging Face CLI, and model
-python load_model.py        # ✅ Step 4: Load the model
-python load_dataset.py      # ✅ Step 5: Load the dataset
-python train_model.py       # ✅ Step 6: Fine-tune the model
+python download_model.py    # ✅ Step 4: Download the model
+python run_repl_ai.py       # ✅ Step 5: Load the model and run REPL AI
+ 
 ```
 
 ---
