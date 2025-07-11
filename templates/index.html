@@ -28,20 +28,44 @@
             border-radius: 6px;
         }
     </style>
+    <script>
+        function toggleAppendCheckbox() {
+            const saveCheckbox = document.getElementById("save_to_dataset");
+            const appendGroup = document.getElementById("append_group");
+            appendGroup.style.display = saveCheckbox.checked ? "block" : "none";
+        }
+
+        window.onload = function () {
+            toggleAppendCheckbox(); // initial load state
+        };
+    </script>
+
 </head>
 
 <body>
     <h1>🤖 PyThor — REPL AI Assistant</h1>
     <form method="post">
         <label for="instruction">Enter your instruction:</label>
-        <input type="text" id="instruction" name="instruction" value="{{ user_input }}" required>
+        <input type="text" id="instruction" name="instruction" value="{{ user_input }}">
 
         <label for="code">Add accompanying code snippet (optional):</label>
         <textarea id="code" name="code" rows="10" placeholder="Paste code here...">{{ user_code }}</textarea>
 
-        <label><input type="checkbox" name="save_to_dataset" checked> Save code to dataset</label><br><br>
+        <label>
+            <input type="checkbox" id="save_to_dataset" name="save_to_dataset" checked onchange="toggleAppendCheckbox()">
+            Save code to dataset
+        </label><br>
 
-        <button type="submit">Generate</button>
+        <div id="append_group">
+            <label>
+                <input type="checkbox" name="append_dataset">
+                Append to dataset
+            </label><br>
+        </div>
+
+
+        <button type="submit" name="action" value="generate">Generate</button>
+        <button type="submit" name="action" value="crawl">Crawl</button>
     </form>
 
     {% if code_status %}
