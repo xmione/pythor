@@ -2,6 +2,7 @@
 
 import os
 import json
+import torch
 from datasets import Dataset
 from transformers import (
     AutoTokenizer,
@@ -11,8 +12,11 @@ from transformers import (
     DataCollatorForSeq2Seq
 )
 
+# Suppress symlink warning if on Windows
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
 # Config
-INPUT_FILE = "./datasets/python_articles.jsonl"
+INPUT_FILE = "python_articles.jsonl"
 OUTPUT_DIR = "./trained-model"
 MODEL_NAME = "Salesforce/codeT5-base"
 BATCH_SIZE = 4
@@ -44,27 +48,28 @@ def tokenize_function(example, tokenizer):
         padding="max_length",
         truncation=True
     )
-    labels = tokenizer(
-        example["output"],
-        max_length=MAX_LENGTH,
-        padding="max_length",
-        truncation=True
-    ).input_ids
-    model_inputs["labels"] = labels
+    with tokenizer.as_target_tokenizer():
+        labels = tokenizer(
+            example["output"],
+            max_length=MAX_LENGTH,
+            padding="max_length",
+            truncation=True
+        )
+    model_inputs["labels"] = labels["input_ids"]
     return model_inputs
 
 
 def main():
-    # Load model and tokenizer
+    # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Load and prepare dataset
+    # Load and tokenize dataset
     dataset = load_dataset(INPUT_FILE)
     tokenized_dataset = dataset.map(lambda x: tokenize_function(x, tokenizer), batched=True)
 
-    # Training configuration
+    # Training arguments
     training_args = TrainingArguments(
         output_dir="./output",
         overwrite_output_dir=True,
@@ -75,14 +80,14 @@ def main():
         logging_steps=10,
         save_strategy="epoch",
         report_to="none",
-        fp16=torch.cuda.is_available(),  # Use fp16 if CUDA is available
+        fp16=torch.cuda.is_available(),
         save_total_limit=2
     )
 
-    # Data collator
+    # Collator
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
 
-    # Trainer
+    # Trainer setup
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -90,21 +95,19 @@ def main():
         data_collator=data_collator,
     )
 
-    # Train
+    # Start training
     trainer.train()
     print("✅ Training complete.")
 
-    # Save
+    # Save model
     model.save_pretrained(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
     print(f"📦 Model saved to: {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
-    import torch
-
     if not os.path.exists(INPUT_FILE):
-        print(f"❌ File '{INPUT_FILE}' not found.")
+        print(f"❌ Input file not found: {INPUT_FILE}")
         exit(1)
 
     main()
