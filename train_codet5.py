@@ -37,9 +37,9 @@ def load_dataset(jsonl_path):
                         examples.append({"input": instruction, "output": code})
             except json.JSONDecodeError:
                 continue
-    print(f"✅ Loaded {len(examples)} examples from {jsonl_path}")
-    return Dataset.from_list(examples)
+    print(f"[OK] Loaded {len(examples)} examples from {jsonl_path}")
 
+    return Dataset.from_list(examples)
 
 def tokenize_function(example, tokenizer):
     model_inputs = tokenizer(
