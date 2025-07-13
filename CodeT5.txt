@@ -1,0 +1,153 @@
+# Step 1: Install dependencies
+!pip install transformers datasets
+
+
+# Step 2: Upload your local `.jsonl` file
+from google.colab import files
+uploaded = files.upload()  # Upload `python_articles.jsonl`
+input_file = next(iter(uploaded))
+
+
+
+# Step 3: Load and convert JSONL into structured training pairs
+import json
+
+examples = []
+with open(input_file, "r", encoding="utf-8") as f:
+    for line in f:
+        try:
+            item = json.loads(line.strip())
+            if "instruction" in item and "code" in item:
+                instruction = item["instruction"].strip()
+                code = item["code"].strip()
+                if instruction and code:
+                    examples.append({
+                        "input": instruction,
+                        "output": code
+                    })
+        except json.JSONDecodeError:
+            continue
+
+print(f"✅ Parsed {len(examples)} training examples")
+
+# Optional cleanup
+import os
+os.remove(input_file)
+print(f"🗑️ Deleted uploaded file: {input_file}")
+
+
+
+
+# Step 4: Load dataset
+from datasets import Dataset
+dataset = Dataset.from_list(examples)
+dataset = dataset.shuffle(seed=42)
+print(dataset)
+
+
+
+# Step 5: Load model and tokenizer
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+
+model_name = "Salesforce/codeT5-base"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+
+tokenizer.pad_token = tokenizer.eos_token  # Ensure padding is handled
+
+
+
+# Step 6: Tokenization function (corrected)
+def tokenize(example):
+    model_inputs = tokenizer(
+        example["input"],
+        max_length=512,
+        padding="max_length",
+        truncation=True
+    )
+
+    labels = tokenizer(
+        example["output"],
+        max_length=512,
+        padding="max_length",
+        truncation=True
+    ).input_ids
+
+    model_inputs["labels"] = labels
+    return model_inputs
+
+tokenized_dataset = dataset.map(tokenize, batched=True)
+print("✅ Tokenization complete")
+
+
+
+# Step 7: Training arguments
+from transformers import TrainingArguments
+
+training_args = TrainingArguments(
+    output_dir="./output",
+    overwrite_output_dir=True,
+    per_device_train_batch_size=4,
+    num_train_epochs=10,
+    logging_dir="./logs",
+    logging_strategy="steps",
+    logging_steps=10,
+    save_strategy="epoch",
+    disable_tqdm=False,
+    report_to="none",
+    fp16=True  # Set to False if you’re not using GPU
+)
+
+
+
+# Step 8: Training setup
+from transformers import Trainer, DataCollatorForSeq2Seq
+
+data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset,
+    data_collator=data_collator,
+)
+
+trainer.train()
+print("✅ Training complete")
+
+
+
+# Step 9: Save model + tokenizer
+model.save_pretrained("./trained-model")
+tokenizer.save_pretrained("./trained-model")
+
+
+
+# Step 10: Download model as zip
+!zip -r trained-model.zip ./trained-model
+files.download("trained-model.zip")
+!ls -lh
+
+
+
+# Step 11: Verify model response (optional)
+prompt = "Write a Python decorator that retries a function up to 3 times if it raises a specific exception, and logs each retry"
+
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+
+model = AutoModelForSeq2SeqLM.from_pretrained("./trained-model")
+tokenizer = AutoTokenizer.from_pretrained("./trained-model")
+
+input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
+
+output = model.generate(
+    input_ids,
+    max_length=256,
+    num_beams=3,
+    early_stopping=True,
+    pad_token_id=tokenizer.pad_token_id,
+    eos_token_id=tokenizer.eos_token_id
+)
+
+print("🧠 Model Output:\n")
+print(tokenizer.decode(output[0], skip_special_tokens=True))

@@ -9,7 +9,7 @@ This guide walks you through setting up an AI assistant for **Next.js React deve
 
 ```
 🗁 C:\repo\nextjs-ai-assistant
-  ├── 🗁 gpt4all_env       # Virtual environment for dependencies
+  ├── 🗁 venv       # Virtual environment for dependencies
   ├── 🗋 requirements.txt  # Python dependencies
   ├── 🗋 bootstrap.ps1     # Creates and initializes Python virtual environment
   ├── 🗋 setup_install.py  # Python setup script (installs pip deps, Hugging Face CLI)
@@ -48,15 +48,15 @@ cd C:\repo\nextjs-ai-assistant
 
 ```powershell
 # Create venv if it doesn't exist
-if (-not (Test-Path ".\gpt4all_env")) {
-    python -m venv gpt4all_env
-    Write-Host "✅ Virtual environment created at .\gpt4all_env"
+if (-not (Test-Path ".\venv")) {
+    python -m venv venv
+    Write-Host "✅ Virtual environment created at .\venv"
 } else {
     Write-Host "⚠️ Virtual environment already exists. Skipping creation."
 }
 
 # Activate venv
-. .\gpt4all_env\Scripts\Activate.ps1
+. .\venv\Scripts\Activate.ps1
 
 # Upgrade pip
 python -m pip install --upgrade pip
@@ -65,7 +65,7 @@ python -m pip install --upgrade pip
 **Always activate the virtual environment before running setup\_install.py or Python scripts:**
 
 ```powershell
-. .\gpt4all_env\Scripts\Activate.ps1
+. .\venv\Scripts\Activate.ps1
 ```
 
 ---
@@ -84,7 +84,7 @@ python -m pip install --upgrade pip
 Run it with:
 
 ```powershell
-. .\gpt4all_env\Scripts\Activate.ps1
+. .\venv\Scripts\Activate.ps1
 python setup_install.py
 ```
 

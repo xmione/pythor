@@ -1,27 +1,43 @@
-# crawler.py
-
 import os
 import json
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
-def crawl_and_save(start_urls, output_file="web_corpus.jsonl", max_pages=5, allowed_domain=None, append=True):
+DISALLOWED_EXTENSIONS = {
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".svg",
+    ".zip", ".tar", ".gz", ".rar", ".exe", ".dmg",
+    ".mp4", ".avi", ".mov", ".mp3", ".wav"
+}
+
+def crawl_and_save(
+    start_urls,
+    output_file="./datasets/web_corpus.jsonl",
+    max_pages=10,
+    allowed_domains=None,
+    append=True,
+    max_depth=2
+):
     saved = 0
-    queue = list(dict.fromkeys(start_urls))
     visited = set()
     file_mode = "a" if append else "w"
-
     crawled = set()
+
     if append:
         crawled = load_existing_urls(output_file)
 
-    with open(output_file, file_mode, encoding="utf-8") as f_out:
-        from tqdm import tqdm
+    # queue will contain tuples of (url, depth)
+    queue = [(url, 0) for url in dict.fromkeys(start_urls)]
 
-        while queue and saved < max_pages:
-            url = queue.pop(0).split("#")[0].rstrip("/")
-            if url in visited or url in crawled:
+    with open(output_file, file_mode, encoding="utf-8") as f_out:
+        while queue:
+            if saved >= max_pages:
+                break
+
+            url, depth = queue.pop(0)
+            url = url.split("#")[0].rstrip("/")
+
+            if url in visited or url in crawled or has_disallowed_extension(url):
                 continue
 
             visited.add(url)
@@ -34,6 +50,7 @@ def crawl_and_save(start_urls, output_file="web_corpus.jsonl", max_pages=5, allo
                 soup = BeautifulSoup(resp.text, "html.parser")
                 for tag in soup(["script", "style", "noscript"]):
                     tag.decompose()
+
                 content = soup.get_text(separator="\n", strip=True)
 
                 if not content or len(content) < 200:
@@ -44,17 +61,27 @@ def crawl_and_save(start_urls, output_file="web_corpus.jsonl", max_pages=5, allo
                 crawled.add(url)
                 print(f"✅ Saved: {url}")
 
-                if allowed_domain:
+                # Expand links (if depth limit not exceeded)
+                if depth < max_depth:
                     for tag in soup.find_all("a", href=True):
                         full_url = urljoin(url, tag["href"]).split("#")[0].rstrip("/")
-                        if allowed_domain in urlparse(full_url).netloc:
-                            if full_url not in crawled and full_url not in visited:
-                                queue.append(full_url)
+                        domain = urlparse(full_url).netloc
+
+                        if (
+                            not has_disallowed_extension(full_url)
+                            and full_url not in visited
+                            and full_url not in crawled
+                            and (
+                                allowed_domains is None
+                                or any(allowed in domain for allowed in allowed_domains)
+                            )
+                        ):
+                            queue.append((full_url, depth + 1))
 
             except Exception as e:
                 print(f"❌ Error on {url}: {e}")
 
-    print(f"\n✅ Done. Saved {saved} new page(s) to {output_file}")
+        print(f"\n✅ Done. Saved {saved} new page(s) to {output_file}")
 
 def load_existing_urls(output_file):
     if not os.path.exists(output_file):
@@ -66,3 +93,7 @@ def load_existing_urls(output_file):
             for item in [json.loads(line)]
             if isinstance(item, dict) and "url" in item
         }
+
+def has_disallowed_extension(url):
+    path = urlparse(url).path.lower()
+    return any(path.endswith(ext) for ext in DISALLOWED_EXTENSIONS)

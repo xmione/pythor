@@ -3,41 +3,109 @@
 import os
 import json
 import traceback
-import json
-import os
+import hashlib
+import functools
+import time
+import logging
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+# from transformers import AutoTokenizer, AutoModelForCausalLM
+# MODEL_NAME = "gpt2"
+# CACHE_DIR = os.path.expanduser("~/.cache/huggingface/transformers")
+# DATASET_FILE = "./datasets/python_articles.jsonl"
 
-MODEL_NAME = "gpt2"
-CACHE_DIR = os.path.expanduser("~/.cache/huggingface/transformers")
-DATASET_FILE = "python_articles.jsonl"
+# tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
+# model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
+MODEL_PATH = "./trained-model"  # Point to your fine-tuned model
+DATASET_FILE = "./datasets/python_articles.jsonl"
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+# model = AutoModelForCausalLM.from_pretrained(MODEL_PATH)
+# model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
+model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
+MAX_MODEL_LENGTH = tokenizer.model_max_length 
 
 def generate_response(prompt: str, max_tokens=150):
-    input_ids = tokenizer.encode(prompt, return_tensors="pt")
+    input_ids = tokenizer.encode(prompt.strip(), return_tensors="pt")
+    input_length = input_ids.shape[1]
+    max_length = min(input_length + max_tokens, tokenizer.model_max_length)
+
+    # output = model.generate(
+    #     input_ids,
+    #     max_length=max_length,
+    #     do_sample=True,
+    #     top_k=50,
+    #     top_p=0.95,
+    #     temperature=0.7,
+    #     pad_token_id=tokenizer.eos_token_id
+    # )
+
     output = model.generate(
         input_ids,
-        max_length=len(input_ids[0]) + max_tokens,
-        do_sample=True,
-        pad_token_id=tokenizer.eos_token_id
+        max_length=max_length,
+        pad_token_id=tokenizer.eos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        no_repeat_ngram_size=2,        # Prevent 2-gram repeats
+        repetition_penalty=1.2,        # Penalize repeated tokens
+        num_beams=3,                   # Greedy/beam search instead of pure sampling
+        early_stopping=True,
     )
-    return tokenizer.decode(output[0], skip_special_tokens=True)
+
+    # result = tokenizer.decode(output[0], skip_special_tokens=True)
+    # result = result.replace(prompt, "").strip()
+    generated_ids = output[0][input_ids.shape[-1]:]     # drop the prompt tokens
+    result = tokenizer.decode(generated_ids, skip_special_tokens=True)
+
+    # 🔧 Remove any extra Markdown code block markers
+    lines = result.splitlines()
+    cleaned = []
+    for line in lines:
+        if line.strip().startswith("```"):
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
 
 def run_python_code(code: str):
     try:
+        exec_globals = {
+            "__builtins__": __builtins__,
+            "functools": functools,
+            "time": time,
+            "logging": logging,
+        }
         exec_locals = {}
-        exec(code, {}, exec_locals)
+        exec(code, exec_globals, exec_locals)
         return True, exec_locals
     except Exception:
         error = traceback.format_exc()
         return False, error
 
+def hash_entry(instruction: str, code: str) -> str:
+    normalized = f"{instruction.strip()}\n{code.strip()}"
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
 def save_to_dataset(instruction: str, code: str):
-    with open(DATASET_FILE, "a", encoding="utf-8") as f:
-        json.dump({"instruction": instruction, "code": code}, f)
-        f.write("\n")
+    new_hash = hash_entry(instruction, code)
+    existing_hashes = set()
+
+    if os.path.exists(DATASET_FILE):
+        with open(DATASET_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    item = json.loads(line.strip())
+                    h = hash_entry(item.get("instruction", ""), item.get("code", ""))
+                    existing_hashes.add(h)
+                except json.JSONDecodeError:
+                    continue
+
+    if new_hash in existing_hashes:
+        return False, "⚠️ Duplicate entry not saved."
+    else:
+        with open(DATASET_FILE, "a", encoding="utf-8") as f:
+            json.dump({"instruction": instruction, "code": code}, f)
+            f.write("\n")
+        return True, "✅ Entry saved to dataset."
 
 def load_json_dataset(path=DATASET_FILE):
     if os.path.exists(path):
@@ -56,71 +124,4 @@ def load_json_dataset(path=DATASET_FILE):
             print(f"⚠️ Failed to load dataset: {e}")
     return ""
 
-# def crawl_and_save(start_urls, output_file="python_articles.jsonl", max_pages=5, allowed_domain=None, append=True):
-#     saved = 0
-#     queue = list(dict.fromkeys(start_urls))  # remove duplicates, keep order
-#     visited = set()
-#     file_mode = "a" if append else "w"
-
-#     crawled = set()
-#     if append:
-#         crawled = load_existing_urls(output_file)
-
-#     with open(output_file, file_mode, encoding="utf-8") as f_out:
-#         from tqdm import tqdm
-#         from bs4 import BeautifulSoup
-#         from urllib.parse import urljoin, urlparse
-#         import requests
-#         import json
-
-#         while queue and saved < max_pages:
-#             url = queue.pop(0).split("#")[0].rstrip("/")
-
-#             if url in visited or url in crawled:
-#                 continue
-
-#             visited.add(url)
-
-#             try:
-#                 response = requests.get(url, timeout=10)
-#                 if response.status_code != 200:
-#                     continue
-#                 if "text/html" not in response.headers.get("Content-Type", ""):
-#                     continue
-
-#                 soup = BeautifulSoup(response.text, "html.parser")
-#                 for tag in soup(["script", "style", "noscript"]):
-#                     tag.decompose()
-#                 content = soup.get_text(separator="\n", strip=True)
-
-#                 if not content or len(content) < 200:
-#                     continue
-
-#                 f_out.write(json.dumps({"url": url, "content": content}, ensure_ascii=False) + "\n")
-#                 saved += 1
-#                 crawled.add(url)
-#                 print(f"✅ Saved: {url}")
-
-#                 # Expand crawl
-#                 if allowed_domain:
-#                     for tag in soup.find_all("a", href=True):
-#                         full_url = urljoin(url, tag["href"]).split("#")[0].rstrip("/")
-#                         if allowed_domain in urlparse(full_url).netloc:
-#                             if full_url not in crawled and full_url not in visited:
-#                                 queue.append(full_url)
-
-#             except Exception as e:
-#                 print(f"❌ Error on {url}: {e}")
-
-#     print(f"\n✅ Done. Saved {saved} new page(s) to {output_file}")
-
-# def load_existing_urls(output_file):
-    if not os.path.exists(output_file):
-        return set()
-    with open(output_file, "r", encoding="utf-8") as f:
-        return {
-            item["url"]
-            for line in f if line.strip()
-            for item in [json.loads(line)]
-            if isinstance(item, dict) and "url" in item
-        }
+#  

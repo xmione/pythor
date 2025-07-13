@@ -1,0 +1,4 @@
+INFO:werkzeug:127.0.0.1 - - [11/Jul/2025 16:11:01] "POST / HTTP/1.1" 200 -
+INFO:werkzeug: * Detected change in 'C:\\repo\\pythor\\ai_core.py', reloading
+INFO:werkzeug:127.0.0.1 - - [11/Jul/2025 16:17:48] "POST / HTTP/1.1" 200 -
+INFO:werkzeug: * Detected change in 'C:\\repo\\pythor\\ai_core.py', reloading

@@ -2,18 +2,21 @@
 
 import os
 from flask import Flask, request, render_template
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from ai_core import generate_response, run_python_code, save_to_dataset
 from crawler import crawl_and_save
 
 app = Flask(__name__)
 
-MODEL_NAME = "gpt2"
+# MODEL_NAME = "gpt2"
+# MODEL_NAME = "./gpt2-finetuned"
+MODEL_NAME = "./trained-model"
+
 CACHE_DIR = os.path.expanduser("~/.cache/huggingface/transformers")
-DATASET_FILE = "python_articles.jsonl"
+DATASET_FILE = "./datasets/python_articles.jsonl"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
+model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME, cache_dir=CACHE_DIR)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -34,14 +37,15 @@ def index():
             if not user_input:
                 code_status = "❌ Instruction is required to generate response."
             else:
-                prompt = f"# Task: {user_input}\n"
+                prompt = f"# Task: {user_input}\n\n# Solution:\n"
+
                 response = generate_response(prompt)
 
                 if should_save and user_code:
                     success, result = run_python_code(user_code)
                     if success:
-                        save_to_dataset(user_input, user_code)
-                        code_status = "✅ Code passed and was saved to dataset."
+                        saved, msg = save_to_dataset(user_input, user_code)
+                        code_status = msg if saved else msg
                     else:
                         code_status = f"❌ Code failed:\n{result}"
 
@@ -55,11 +59,15 @@ def index():
             ]
 
             crawl_and_save(
-                urls,
-                output_file="web_corpus.jsonl",
-                max_pages=5,
-                allowed_domain="realpython.com",
-                append=append
+                start_urls=[
+                    "https://realpython.com/python-web-scraping-practical-introduction/",
+                    "https://www.geeksforgeeks.org/python-programming-language/"
+                ],
+                output_file="./datasets/web_corpus.jsonl",
+                max_pages=10,
+                allowed_domains={"realpython.com", "geeksforgeeks.org"},
+                append=True,
+                max_depth=2
             )
 
             crawl_status = "✅ Crawling complete."

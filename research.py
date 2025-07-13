@@ -9,4 +9,4 @@ sources = [
 ]
 
 for domain, urls in sources.items():
-    crawl_and_save(urls, output_file="python_articles.jsonl", max_pages=5, allowed_domain=domain)
+    crawl_and_save(urls, output_file="./datasets/python_articles.jsonl", max_pages=5, allowed_domain=domain)

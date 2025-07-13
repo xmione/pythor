@@ -1,0 +1,134 @@
+# train_codet5_colab.ipynb
+# Step 1: Install dependencies
+!pip install transformers datasets
+
+# Step 2: Upload your local `.jsonl` file
+from google.colab import files
+
+#!rm -f python_articles.jsonl
+uploaded = files.upload()  # Upload `python_articles.jsonl`
+# Get the uploaded filename (automatically)
+input_file = next(iter(uploaded))  # Gets the name of the uploaded file
+# Optional: Preview file content
+# print(uploaded[input_file].decode("utf-8")[:500])  # First 500 characters
+
+# Step 3: Convert JSONL to formatted plain text for model
+
+import json
+import os
+
+output_json_file = "train_data.json"
+
+examples = []
+
+with open(input_file, "r", encoding="utf-8") as infile:
+    for line in infile:
+        try:
+            item = json.loads(line.strip())
+            instruction = item.get("instruction", "").strip()
+            code = item.get("code", "").strip()
+            if instruction and code:
+                examples.append({
+                    "input": instruction,
+                    "output": code
+                })
+        except json.JSONDecodeError:
+            continue
+
+with open(output_json_file, "w", encoding="utf-8") as out_json:
+    json.dump(examples, out_json, indent=2)
+
+print(f"✅ Converted to {len(examples)} structured instruction-code pairs")
+os.remove(input_file)
+print(f"🗑️ Deleted original upload: {input_file}")
+
+
+# Step 4: Load dataset
+from datasets import Dataset
+
+with open("train_data.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+dataset = Dataset.from_list(data)
+print(dataset)
+
+
+
+
+
+# Step 5: Load model and tokenizer
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+
+model_name = "Salesforce/codeT5-base"
+
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+
+# Fix for potential config issues
+if hasattr(model.config, "loss_type"):
+    delattr(model.config, "loss_type")
+
+tokenizer.pad_token = tokenizer.eos_token
+
+
+# Step 6: Tokenize dataset
+def tokenize(example):
+    inputs = tokenizer(example["input"], truncation=True, padding="max_length", max_length=512)
+    with tokenizer.as_target_tokenizer():
+        labels = tokenizer(example["output"], truncation=True, padding="max_length", max_length=512)
+    inputs["labels"] = labels["input_ids"]
+    return inputs
+
+tokenized_dataset = dataset.map(tokenize, batched=True)
+
+
+# Step 7: Define training args
+from transformers import TrainingArguments
+
+training_args = TrainingArguments(
+    output_dir="./output",
+    overwrite_output_dir=True,
+    per_device_train_batch_size=4,
+    num_train_epochs=10,
+    logging_dir="./logs",
+    logging_strategy="steps",
+    logging_steps=10,
+    save_strategy="epoch",
+    disable_tqdm=False,
+    report_to="none",
+    fp16=True,  # Only if running on GPU
+)
+
+
+
+# Step 8: Train
+from transformers import Trainer, DataCollatorForSeq2Seq
+
+data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset,
+    data_collator=data_collator,
+)
+
+trainer.train()
+print("✅ Training complete.")
+
+
+
+# Step 9: Save model
+model.save_pretrained("./trained-model")
+tokenizer.save_pretrained("./trained-model")
+print("✅ Model saved to ./trained-model")
+
+
+# Step 10: Download model as zip
+# Step 10: Download trained model
+!zip -r trained-model.zip ./trained-model
+from google.colab import files
+files.download("trained-model.zip")
+
+!ls -lh
+

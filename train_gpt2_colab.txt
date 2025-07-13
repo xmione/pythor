@@ -1,0 +1,136 @@
+# train_gpt2_colab.ipynb
+# Step 1: Install dependencies
+!pip install transformers datasets
+
+# Step 2: Upload your local `.jsonl` file
+from google.colab import files
+
+#!rm -f python_articles.jsonl
+uploaded = files.upload()  # Upload `python_articles.jsonl`
+# Get the uploaded filename (automatically)
+input_file = next(iter(uploaded))  # Gets the name of the uploaded file
+# Optional: Preview file content
+# print(uploaded[input_file].decode("utf-8")[:500])  # First 500 characters
+
+# Step 3: Convert JSONL to formatted plain text for GPT2
+
+import json
+import os
+
+output_txt_file = "train_data.txt"
+
+# Detect file type based on known schema or filename
+def detect_and_format(item, file_name):
+    if "instruction" in item and "code" in item:
+        instruction = item.get("instruction", "").strip()
+        code = item.get("code", "").strip()
+        if instruction and code:
+            return f"### Instruction:\n{instruction}\n\n### Code:\n```python\n{code}\n```"
+    elif "url" in item and "content" in item:
+        url = item.get("url", "").strip()
+        content = item.get("content", "").strip()
+        if content:
+            return f"### URL:\n{url}\n\n### Content:\n{content}"
+    else:
+        return None
+
+with open(input_file, "r", encoding="utf-8") as infile, open(output_txt_file, "w", encoding="utf-8") as outfile:
+    for line in infile:
+        try:
+            item = json.loads(line.strip())
+            formatted = detect_and_format(item, input_file)
+            if formatted:
+                outfile.write(formatted + "\n\n")
+        except json.JSONDecodeError:
+            continue
+
+print(f"✅ Generated formatted {output_txt_file} from {input_file}")
+
+# Optionally delete the uploaded file
+os.remove(input_file)
+print(f"🗑️ Deleted file: {input_file}")
+
+
+# Step 4: Load dataset from formatted paragraphs
+from datasets import Dataset
+
+with open("train_data.txt", "r", encoding="utf-8") as f:
+    content = f.read()
+
+# Split entries by double line break (used in your formatting)
+entries = [e.strip() for e in content.split("\n\n") if e.strip()]
+data = [{"text": e} for e in entries]
+
+dataset = Dataset.from_list(data)
+print(dataset)
+
+
+
+
+# Step 5: Load model and tokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# Hugging Face-supported model
+#model_name = "gpt2"
+#model_name = "Salesforce/codeT5-base"
+
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
+
+# Fix for warning: remove or set valid loss_type
+if hasattr(model.config, "loss_type"):
+    delattr(model.config, "loss_type")  # or: model.config.loss_type = "ForCausalLMLoss"
+
+tokenizer.pad_token = tokenizer.eos_token
+
+# Step 6: Tokenize dataset
+def tokenize_function(example):
+    return tokenizer(example["text"], truncation=True, padding="max_length", max_length=512)
+
+tokenized_dataset = dataset.map(tokenize_function, batched=True)
+
+# Step 7: Define training args
+from transformers import TrainingArguments
+
+training_args = TrainingArguments(
+    output_dir="./output",
+    overwrite_output_dir=True,
+    per_device_train_batch_size=4,
+    num_train_epochs=10,
+    logging_dir="./logs",
+    logging_strategy="steps",
+    logging_steps=10,
+    save_strategy="epoch",
+    disable_tqdm=False,
+    report_to="none",
+    fp16=True,  # only if on GPU
+)
+
+
+# Step 8: Train
+from transformers import Trainer, DataCollatorForLanguageModeling
+
+data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset,
+    data_collator=data_collator
+)
+
+trainer.train()
+print("✅ Training complete.")
+
+
+# Step 9: Save model
+model.save_pretrained("./trained-model")
+tokenizer.save_pretrained("./trained-model")
+
+# Step 10: Download model as zip
+!zip -r trained-gpt2.zip ./trained-gpt2
+from google.colab import files
+files.download("trained-model.zip")
+
+!ls -lh
+

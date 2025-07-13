@@ -36,7 +36,7 @@ MODEL_NAME = "gpt2"  # Default model
 CACHE_DIR = os.path.expanduser("~/.cache/huggingface/transformers")
 USE_OFFLINE = "--offline" in sys.argv  # Use --offline flag to avoid internet
 
-DATASET_PATH = "python_articles.jsonl"
+DATASET_PATH = "./datasets/python_articles.jsonl"
 
 print(f"🔧 Loading model (offline={USE_OFFLINE})...")
 
