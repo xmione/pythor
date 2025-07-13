@@ -16,7 +16,7 @@ from transformers import (
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 # Config
-INPUT_FILE = "python_articles.jsonl"
+INPUT_FILE = "./datasets/python_articles.jsonl"
 OUTPUT_DIR = "./trained-model"
 MODEL_NAME = "Salesforce/codeT5-base"
 BATCH_SIZE = 4
