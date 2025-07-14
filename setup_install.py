@@ -14,6 +14,7 @@ import shutil
 from pathlib import Path
 
 FORCE_PURGE = "--force" in sys.argv
+MODEL="gpu"
 
 def check_rust():
     """Check if the Rust compiler is installed and available on PATH."""
@@ -153,6 +154,26 @@ def authenticate_huggingface():
             print(f"❌ Login failed: {e}")
             print("💡 Run 'huggingface-cli login' manually and try again.")
 
+def install_cmake_with_winget():
+    """Install CMake using winget if not already installed."""
+    print("🔍 Checking if CMake is installed...")
+    if shutil.which("cmake"):
+        print("✅ CMake is already installed.")
+        return
+
+    print("📦 Installing CMake using winget...")
+    try:
+        subprocess.run(["winget", "install", "--id", "Kitware.CMake", "--silent", "--accept-package-agreements", "--accept-source-agreements"], check=True)
+        print("✅ CMake installed successfully via winget.")
+    except FileNotFoundError:
+        print("❌ Winget is not installed or not available on your PATH.")
+        print("👉 Please install CMake manually from https://cmake.org/download/")
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print("❌ Failed to install CMake using winget:", e)
+        print("👉 You may try installing it manually from https://cmake.org/download/")
+        sys.exit(1)
+
 def download_model(model_name):
     """Download model using Hugging Face CLI."""
     print(f"📥 Downloading model: {model_name} ...")
@@ -189,6 +210,7 @@ if __name__ == "__main__":
     print("🚀 Starting Python environment setup...")
     
     check_rust()
+    install_cmake_with_winget()
     update_pip()
     
     if FORCE_PURGE:
@@ -202,6 +224,6 @@ if __name__ == "__main__":
     ensure_huggingface_cli()
     authenticate_huggingface()
     # download_model("codellama/CodeLlama-7b-hf")
-    download_model("gpt2")
+    download_model(MODEL)
 
     print("\n🎉 Setup complete! You're ready to go.")
